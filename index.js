@@ -8,7 +8,7 @@ const port = process.env.PORT || 5001;
 
 const app = express();
 const corsOptions = {
-  origin: ["http://localhost:5173"],
+  origin: ["http://localhost:5173", "https://taskmanagement-cf552.web.app"],
   credentials: true,
 };
 app.use(cors(corsOptions));
@@ -26,7 +26,6 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    await client.connect();
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
@@ -70,14 +69,56 @@ async function run() {
     app.patch("/tasks/:id", async (req, res) => {
       try {
         const { id } = req.params;
-        const { category } = req.body;
+        const updatedFields = req.body; // Get all updated fields
         const result = await tasksCollection.updateOne(
           { _id: new ObjectId(id) },
-          { $set: { category } }
+          { $set: updatedFields } // Update with all fields received
         );
-        res.json({ message: "Task updated successfully", result });
+        if (result.modifiedCount === 1) {
+          res.json({ message: "Task updated successfully", result });
+        } else {
+          res.status(404).json({ error: "Task not found or not modified" });
+        }
       } catch (error) {
         res.status(500).json({ error: "Failed to update task" });
+      }
+    });
+
+    app.get("/tasks", async (req, res) => {
+      try {
+        const userEmail = req.query.userEmail;
+
+        if (!userEmail) {
+          console.error("Error: User email is required");
+          return res.status(400).json({ error: "User email is required" });
+        }
+
+        console.log("Fetching tasks for user:", userEmail);
+        const userTasks = await tasksCollection.find({ userEmail }).toArray();
+
+        if (userTasks.length === 0) {
+          console.warn("No tasks found for user:", userEmail);
+        }
+
+        res.json(userTasks);
+      } catch (error) {
+        console.error("Failed to fetch tasks:", error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+    app.delete("/tasks/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const result = await tasksCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        if (result.deletedCount === 1) {
+          res.json({ message: "Task deleted successfully" });
+        } else {
+          res.status(404).json({ error: "Task not found" });
+        }
+      } catch (error) {
+        res.status(500).json({ error: "Failed to delete task" });
       }
     });
 
